@@ -4,6 +4,9 @@ second_esp32/Secrets.h
 # Local Claude Code tool config (machine-specific, not project source)
 .claude/
 
+# Old test sketches / legacy prototype — not part of the repo
+/tests/
+
 # Node
 node_modules/
 dist/
