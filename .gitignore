@@ -1,0 +1,17 @@
+# Secrets — WiFi + Firebase credentials (see second_esp32/Secrets.h.example)
+second_esp32/Secrets.h
+
+# Local Claude Code tool config (machine-specific, not project source)
+.claude/
+
+# Node
+node_modules/
+dist/
+dist-ssr/
+
+# OS / editor
+.DS_Store
+*.local
+.vscode/*
+!.vscode/extensions.json
+.idea
