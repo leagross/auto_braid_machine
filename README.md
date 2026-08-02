@@ -1,149 +1,189 @@
-# 🪢 AutoBraid — מכונת קליעת צמות אוטונומית
+# 🪢 AutoBraid — Autonomous Hair-Braiding Machine
 
-מערכת משובצת עם **2 לוחות ESP32** בתקשורת **UART**, אפליקציית **React + Firebase**,
-מסך מגע, 3 מנועי צעד ו-3 חיישנים.
+An embedded system with **2 ESP32 boards** talking over **UART**, a **React** app with **Firebase**
+on the backend, a touch screen, 3 stepper motors, and 2 sensors.
 
 ---
 
-## 🧠 ארכיטקטורה
+## 🧠 Architecture
 
 ```
 ┌────────────────────────┐         UART (115200)         ┌────────────────────────────┐
-│      ESP32 FIRST       │  TX/RX + GND משותף  ◄────────►│        ESP32 SECOND         │
-│   (חיישנים - "slave")  │                               │   (המוח / "master")        │
+│      ESP32 FIRST       │  TX/RX + shared GND ◄────────►│        ESP32 SECOND         │
+│   (sensors - "slave")  │                               │   (brain / "master")        │
 ├────────────────────────┤                               ├────────────────────────────┤
-│ • כפתור התחלה/חירום    │                               │ • מסך מגע TFT (ILI9341)     │
-│ • חיישן אולטרסוני      │                               │ • WiFi + Firebase          │
-│ • חיישן צבע TCS3200    │                               │ • מנוע מסילה               │
-│ • מנוע תוספות (קרוסלה) │                               │ • מנוע קליעה               │
-└────────────────────────┘                               └────────────────────────────┘
-        ┌────────────────┐
-        │   React App    │  ── Auth + קוד זמני + היסטוריה ──►  Firebase RTDB
-        └────────────────┘                                          ▲
-                                                                    │ אימות קוד + שמירת הזמנה
-                                                        ESP32 SECOND ┘
+│ • start/emergency btn  │                               │ • TFT touch screen (ILI9341)│
+│ • ultrasonic sensor    │                               │ • WiFi + HTTP server        │
+│ • TCS34725 color (I2C) │                               │ • rail motor                │
+│ • extension motor      │                               │ • braid motor               │
+└────────────────────────┘                               └───────────┬────────────────┘
+                                                                       │ HTTPS
+        ┌────────────────┐        HTTP (local network)                ▼
+        │   React App    │ ─────────────────────────────►  ESP32 SECOND's web server
+        └────────────────┘                                            │
+                                                                       ▼
+                                                              Firebase (Auth + Firestore)
 ```
 
-**חלוקת התפקידים:** הלוח השני הוא ה-master — הוא מנהל את המסך, ה-Firebase ואת מנועי המסילה+קליעה.
-הלוח הראשון הוא slave: נותן קריאות מרחק/צבע לפי בקשה, מדווח על לחיצת כפתור החירום,
-**וגם מניע את מנוע התוספות (קרוסלה) לפי בקשה מהלוח השני** — הועבר לכאן כי בלוח השני
-(שיש בו מסך מולחם) אין מספיק פינים פנויים לכל 3 המנועים.
+**Division of roles:** the second board is the master — it drives the screen, the rail+braid
+motors, and talks to Firebase. It also runs a small HTTP server that the React app calls into
+(the app never talks to Firebase directly — see [react-app/src/api.js](react-app/src/api.js)).
+The first board is the slave: it reports distance/color readings on request, reports the
+emergency button, **and also drives the extension carousel motor on request from the second
+board** — moved there because the second board (with its soldered-on screen) doesn't have
+enough free pins for all 3 motors.
+
+**Non-blocking design:** both boards run as explicit state machines, ticked once per `loop()`
+iteration. Nothing — not a touch, not a UART reply, not a motor move — blocks the board while
+waiting; each step is "enter once, poll every tick until done". This keeps the emergency button
+and the app's HTTP requests responsive at all times, including mid-motion. See the state list at
+the top of [second_esp32/second_esp32.ino](second_esp32/second_esp32.ino) and the non-blocking
+carousel logic in [first_esp32/Dispenser.ino](first_esp32/Dispenser.ino).
 
 ---
 
-## 🔄 זרימת הלוגיקה המלאה
+## 🔄 Full logic flow
 
-1. **אפליקציה:** המשתמש נרשם/מתחבר (מייל+סיסמה), ולוחץ "קוד למכונה" → נוצר קוד זמני בן 4 ספרות ומאוחסן ב-`codes/{code}`.
-2. **מסך המכונה:** מקלדת → המשתמש מקליד את הקוד → הלוח מאמת מול Firebase ושולף את השם.
-3. `"Hi <name>"` → **בחירת עד 3 תוספות**: MyHair (כצבע שערי) / Green / Pink / Blonde / Black / None.
-4. `"INSERT HAIR"` → אישור (START).
-5. הלוח השני מבקש מהראשון **בדיקת מרחק** (אולטרסוני). אם נבחר MyHair — הראשון **דוגם 3 פעמים** את צבע השיער ומחזיר את הצבע הקרוב.
-6. **מנוע התוספות** (קרוסלה) מסתובב **רבע סיבוב** לכל מקום לפי הצבע ומגיש; המשתמש לוקח.
-7. **קליעה:** המסילה יורדת ומנוע הקליעה מסתובב — עד שהמסילה מגיעה למטה.
-8. **חירום:** לחיצה על הכפתור בלוח הראשון → `EMG` → הלוח השני עוצר את הקליעה → ממתין לאישור "הכל תקין" → **מאפס** (המסילה עולה) → חוזר למצב התחלתי.
-9. **סיום תקין:** המסילה עולה, המשתמש מאשר, וההזמנה נשמרת ב-`orders/{uid}`. באפליקציה — היסטוריית ההזמנות.
+1. **App:** the user registers/logs in (email+password) and taps "Code for machine" → a 4-digit
+   temporary code is generated and stored under `codes/{code}`.
+2. **Machine screen:** keypad → the user types the code → the board validates it against Firebase
+   and fetches the name.
+3. `"Hi <name>"` → **choosing up to 3 extensions**: MyHair (match my hair color) / Green / Red /
+   Blonde / Black / None.
+4. `"INSERT HAIR"` → confirm (START).
+5. The second board asks the first for a **distance check** (ultrasonic). If MyHair was chosen,
+   the first board scans the hair color and returns the closest match.
+6. The **extension motor** (carousel) turns a **quarter turn** to each position in order and
+   dispenses; the user takes it.
+7. **Braiding:** the rail lowers and the braid motor spins — for one minute, or until stopped.
+8. **Emergency:** pressing the button on the first board → `EMG` → the second board stops the
+   braid → waits for an "all clear" confirmation → **resets** (rail goes back up) → returns to
+   the start.
+9. **Normal finish:** the rail goes up, the user confirms, and the order is saved under
+   `orders/{id}`. Shown in the app as order history.
 
 ---
 
-## 🔌 חיווט (מפת פינים)
+## 🔌 Wiring (pin map)
 
-### ESP32 FIRST — חיישנים + מנוע תוספות (בלי מסך → הרבה פינים פנויים)
-| רכיב | פינים |
+### ESP32 FIRST — sensors + extension motor (no screen → plenty of free pins)
+
+| Component | Pins |
 |------|-------|
-| כפתור התחלה/חירום | `27` (INPUT_PULLUP) |
-| אולטרסוני HC-SR04 | `TRIG=21`, `ECHO=19` |
-| חיישן צבע TCS3200 | `S0=23`, `S1=22`, `S2=32`, `S3=33`, `OUT=35` |
-| מנוע תוספות (ULN2003, קרוסלה) | `2, 15, 18, 5` — נקי, אין התנגשות |
-| UART → לוח שני | `TX=17`, `RX=16` |
+| Start/emergency button | `27` (INPUT_PULLUP) |
+| HC-SR04 ultrasonic | `TRIG=21`, `ECHO=19` |
+| TCS34725 color sensor (I2C) | `SDA=32`, `SCL=26`, `LED=33` |
+| Extension motor (ULN2003, carousel) | `2, 15, 18, 5` — clean, no conflicts |
+| UART → second board | `TX=17`, `RX=16` |
 
-### ESP32 SECOND — מסך + מנועי מסילה/קליעה
-| רכיב | פינים |
+### ESP32 SECOND — screen + rail/braid motors
+
+| Component | Pins |
 |------|-------|
-| מסך TFT (VSPI) | `SCK=18`, `MOSI=23`, `MISO=19`, `CS=5`, `DC=4`, `T_CS=15`, `T_IRQ=35` |
-| מנוע מסילה (ULN2003) | `26, 25, 14, 13` — נקי, אין התנגשות |
-| מנוע קליעה / מנוע צעד 1 (ULN2003) | `27, 33, 32, 3` — נקי (GPIO3=RX0, נתק בזמן העלאה) |
-| UART → לוח ראשון | `TX=17`, `RX=16` (פינים רגילים; ESP32 מנתב UART2 לכל GPIO) |
+| TFT screen (VSPI) | `SCK=18`, `MOSI=23`, `MISO=19`, `CS=5`, `DC=4`, `T_CS=15`, `T_IRQ=35` |
+| Rail motor (ULN2003) | `26, 25, 14, 13` — clean, no conflicts |
+| Braid motor / stepper 1 (ULN2003) | `27, 33, 32, 3` — clean (GPIO3=RX0, disconnect while flashing) |
+| UART → first board | `TX=17`, `RX=16` (regular pins; the ESP32 routes UART2 to any GPIO) |
 
-> ⚠️ **חיבור UART:** `FIRST_TX(17) → SECOND_RX(16)` , `FIRST_RX(16) → SECOND_TX(17)` , **וחובה GND משותף בין הלוחות**.
+> ⚠️ **UART wiring:** `FIRST_TX(17) → SECOND_RX(16)`, `FIRST_RX(16) → SECOND_TX(17)`,
+> **and a shared GND between the boards is mandatory**.
 >
-> ⚠️ **אל תשתמש ב-RX0/TX0** (GPIO3/GPIO1) לתקשורת בין הלוחות — הם UART0, תפוסים ע"י ה-USB (העלאה + Serial Monitor). ה-ESP32 מנתב את `Serial2` לפינים 16/17 בתוכנה, אין צורך בפינים מסומנים.
+> ⚠️ **Don't use RX0/TX0** (GPIO3/GPIO1) for the link between the boards — that's UART0, used by
+> USB (flashing + Serial Monitor). The ESP32 routes `Serial2` to pins 16/17 in software, no
+> dedicated pins needed.
 >
-> ℹ️ **למה מנוע התוספות עבר ללוח הראשון:** בלוח השני (עם המסך המולחם) תקציב הפינים מלא לגמרי — מסך (6) + UART (2) + 2 מנועים (8) = 16, ועוד `GPIO0/1` לא נגישים ו-`GPIO21/22` תקולים על הלוח הספציפי הזה. אחרי מסילה+קליעה נשאר רק פין חופשי אחד (`GPIO3`), לא מספיק לעוד מנוע. לכן מנוע התוספות מנוהל מרחוק דרך UART — הלוח השני שולח `DISP:<n>` והלוח הראשון (שיש בו הרבה פינים פנויים) מבצע את הסיבוב בפועל.
+> ℹ️ **Why the extension motor is on the first board:** on the second board (with its soldered
+> screen) the pin budget is completely full — screen (6) + UART (2) + 2 motors (8) = 16, plus
+> `GPIO0/1` are inaccessible and `GPIO21/22` are faulty on this specific board. After rail+braid
+> there's only one free pin left (`GPIO3`), not enough for another motor. So the extension motor
+> is driven remotely over UART — the second board sends `DISP:<n>` and the first board (which has
+> plenty of free pins) does the actual turning.
 >
-> ⚠️ **GPIO3 (קליעה IN4) הוא RX0** — חובה לנתקו בזמן העלאת קוד ללוח השני, ולחבר בחזרה אחרי שההעלאה הצליחה.
+> ⚠️ **GPIO3 (braid motor IN4) is RX0** — it must be disconnected while flashing the second board,
+> and reconnected once flashing succeeds.
 
 ---
 
-## 📡 פרוטוקול ה-UART (שורות ASCII, מסתיימות ב-`\n`)
+## 📡 UART protocol (ASCII lines, terminated with `\n`)
 
-| כיוון | פקודה | משמעות |
+| Direction | Command | Meaning |
 |-------|--------|--------|
-| SECOND → FIRST | `DIST?` | בקשת מדידת מרחק |
-| SECOND → FIRST | `COLOR?` | בקשת זיהוי צבע שיער (3 דגימות) |
-| SECOND → FIRST | `ARMED` / `DISARM` | הפעלה/כיבוי ניטור כפתור החירום |
-| SECOND → FIRST | `PING` | בדיקת קשר |
-| SECOND → FIRST | `DISP:<n>` | בקשה לסובב את קרוסלת התוספות למקום n (0-3, שלילי=ללא) |
-| FIRST → SECOND | `DIST:<cm>` , `DISTOK:<0\|1>` | מרחק + האם תקין |
-| FIRST → SECOND | `COLOR:<name>` | `Green/Pink/Blonde/Black/Unknown` |
-| FIRST → SECOND | `EMG` | כפתור חירום נלחץ בזמן קליעה |
-| FIRST → SECOND | `OK` | אישור "הכל תקין" אחרי חירום |
-| FIRST → SECOND | `PONG` | תשובה ל-PING |
-| FIRST → SECOND | `DISPDONE` | קרוסלת התוספות סיימה להסתובב |
+| SECOND → FIRST | `DIST?` | request a distance reading |
+| SECOND → FIRST | `COLOR?` | request a hair-color scan |
+| SECOND → FIRST | `ARMED` / `DISARM` | start/stop monitoring the emergency button |
+| SECOND → FIRST | `PING` | connectivity check |
+| SECOND → FIRST | `DISP:<n>` | turn the extension carousel to position n (0-3, negative = none) |
+| FIRST → SECOND | `DIST:<cm>`, `DISTOK:<0\|1>` | distance + whether it's valid |
+| FIRST → SECOND | `COLOR:<name>` | `Green/Red/Blonde/Black/Unknown` |
+| FIRST → SECOND | `EMG` | emergency button pressed during braiding |
+| FIRST → SECOND | `OK` | "all clear" confirmation after an emergency |
+| FIRST → SECOND | `PONG` | reply to PING |
+| FIRST → SECOND | `DISPDONE` | the extension carousel finished turning |
 
 ---
 
-## 🗂️ מבנה הנתונים ב-Firebase (Realtime Database)
+## 🗂️ Firebase data structure (Cloud Firestore)
 
 ```
-users/{uid}          = { name, email, role }
-codes/{code}         = { uid, name, used:false, createdAt }      // האפליקציה יוצרת, המכונה מאמתת
-orders/{uid}/{push}  = { name, extensions, hairColor, createdAt } // המכונה כותבת, האפליקציה קוראת
+users/{uid}   = { name, email, role }
+codes/{code}  = { uid, name, used, createdAt }               // created by the app, validated by the machine
+orders/{id}   = { uid, name, extensions, hairColor, status, createdAt }  // written by the machine, read by the app
 ```
+
+The app never talks to Firestore directly — every one of these reads/writes goes through the
+second board's HTTP server ([second_esp32/WebServer.ino](second_esp32/WebServer.ino) +
+[AuthManager.ino](second_esp32/AuthManager.ino) +
+[FirebaseManager.ino](second_esp32/FirebaseManager.ino)).
 
 ---
 
-## ⚙️ התקנה והרצה
+## ⚙️ Setup and running it
 
-### לוחות ה-ESP32 (Arduino IDE)
-1. פתח את `first_esp32/` ו-`second_esp32/` כשתי סקיצות נפרדות.
-2. ספריות נדרשות:
-   - `TFT9341Touch` (מאת Avi Hayun) — למסך.
-   - `Firebase Arduino Client Library for ESP8266 and ESP32` (Mobizt) — ל-Firebase.
-3. בלוח השני, העתיקי את `second_esp32/Secrets.h.example` לקובץ חדש בשם `second_esp32/Secrets.h` (לא נכנס לגיט) ומלאי שם: פרטי WiFi, מפתחות Firebase, וחשבון מכשיר.
-   > אם לא ממלאים — הלוח עובד ב**מצב דמו**: כל קוד בן 4 ספרות מתקבל, השם "Guest", וההזמנה רק נרשמת ל-Serial (נוח לבדיקת חומרה בלי רשת).
-4. העלה כל סקיצה ללוח המתאים.
+### ESP32 boards (Arduino IDE)
 
-### האפליקציה
+1. Open `first_esp32/` and `second_esp32/` as two separate sketches.
+2. Required libraries:
+   - `TFT9341Touch` (by Avi Hayun) — for the screen.
+   - `Firebase Arduino Client Library for ESP8266 and ESP32` (Mobizt) — for Firebase.
+3. On the second board, copy `second_esp32/Secrets.h.example` to a new file named
+   `second_esp32/Secrets.h` (not in git) and fill in: WiFi details, Firebase keys, and the device
+   account.
+   > If left unfilled, the board runs in **demo mode**: any 4-digit code is accepted, the name is
+   > "Guest", and the order is only logged to Serial (handy for testing the hardware with no network).
+4. Flash each sketch to its matching board.
+
+### The app
+
 ```bash
 cd react-app
 npm install
-# ערוך src/firebase.js עם הקונפיג של הפרויקט שלך
+# edit ESP32_URL in src/api.js to your second board's local IP (printed on Serial at boot)
 npm run dev
 ```
 
 ---
 
-## 📁 מבנה הקבצים
+## 📁 File structure
 
 ```
-first_esp32/                 ESP32 ראשון (חיישנים + מנוע תוספות) — קובץ לכל רכיב
-  ├─ Config.h                פינים וקבועים
-  ├─ first_esp32.ino         setup/loop, UART, ניטור כפתור חירום
-  ├─ buttom_switch.ino       כפתור התחלה/חירום
-  ├─ Ultrasonic_esp32.ino    חיישן אולטרסוני
-  ├─ TCS3200_Color_sensor.ino חיישן צבע (3 דגימות → ממוצע → צבע קרוב)
-  └─ Dispenser.ino           מנוע תוספות (קרוסלה) — נשלט מרחוק דרך UART
+first_esp32/                 first ESP32 (sensors + extension motor) — one file per component
+  ├─ Config.h                pins and constants
+  ├─ first_esp32.ino         setup/loop, UART, emergency-button monitoring
+  ├─ buttom_switch.ino       start/emergency button
+  ├─ Ultrasonic_esp32.ino    ultrasonic sensor
+  ├─ TCS34725_Color_sensor.ino  color sensor (I2C)
+  └─ Dispenser.ino           extension motor (carousel) — non-blocking, remote-controlled over UART
 
-second_esp32/                ESP32 שני (master) — קובץ לכל מודול
-  ├─ Config.h                פינים, פרמטרי מנועים, WiFi/Firebase
-  ├─ second_esp32.ino        מכונת המצבים הראשית (כל הזרימה)
-  ├─ DisplayManager.ino      ← המסכים (מקלדת, בחירת תוספות, הודעות)
-  ├─ Motors.ino              מנועי מסילה + קליעה
-  ├─ UartLink.ino            תקשורת עם הלוח הראשון (כולל בקשת סיבוב קרוסלה)
-  └─ FirebaseManager.ino     ← Firebase (אימות קוד + שמירת הזמנה)
+second_esp32/                second ESP32 (master) — one file per module
+  ├─ Config.h                pins, motor parameters, WiFi/Firebase (via Secrets.h)
+  ├─ second_esp32.ino        the main session state machine (the whole flow)
+  ├─ DisplayManager.ino      ← the screens (keypad, extension choice, messages)
+  ├─ Motors.ino              rail + braid motors
+  ├─ UartLink.ino            communication with the first board (incl. carousel requests)
+  └─ FirebaseManager.ino / AuthManager.ino / WebServer.ino  ← Firebase + the app's HTTP API
 
-react-app/                   אפליקציית React + Firebase
-  ├─ src/firebase.js         אתחול Firebase (מלא קונפיג)
-  ├─ src/api.js              Auth + יצירת קוד זמני + היסטוריה
+react-app/                   React app
+  ├─ src/api.js              talks to the second board's HTTP server (register/login/codes/orders)
+  ├─ src/firebase.js         unused — kept for reference, nothing imports from it
   └─ src/pages/              Login/Register/Dashboard/MyAppointments
 ```
