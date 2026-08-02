@@ -7,6 +7,10 @@ second_esp32/Secrets.h
 # Old test sketches / legacy prototype — not part of the repo
 /tests/
 
+# Local-only docs — kept on disk, not published to GitHub
+/הסבר_מקיף_לפרויקט.md
+/סיכום_חיישנים_ומנועים.docx
+
 # Node
 node_modules/
 dist/
