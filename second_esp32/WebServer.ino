@@ -1,6 +1,8 @@
 // ============================================================================
-//  WebServer.ino  —  שרת HTTP: 
-//  ל-Firestore). האפליקציה קוראת ל-/register, /login, /generate-code בלבד;
+//  WebServer.ino — HTTP server for the React app: /register, /login,
+//  /generate-code, /my-orders, /all-orders, /delete-order. Everything goes
+//  through Firestore via AuthManager.ino/FirebaseManager.ino — the app never
+//  talks to Firebase directly.
 // ============================================================================
 #include "Config.h"
 #include <WebServer.h>
@@ -63,7 +65,7 @@ static void handleMyOrders() {
 }
 
 static void handleAllOrders() {
-  sendJson(200, fbListOrders(""));    // בלי סינון -> כל ההזמנות (מנהל)
+  sendJson(200, fbListOrders(""));    // no filter -> all orders (admin)
 }
 
 static void handleDeleteOrder() {
@@ -73,7 +75,8 @@ static void handleDeleteOrder() {
   sendJson(ok ? 200 : 500, ok ? "{}" : "{\"message\":\"delete failed\"}");
 }
 
-// כך שהוא מגיב תמיד, גם באמצע קליעה.
+// Runs on Core 0, separate from the main state machine on Core 1, so it keeps
+// responding even in the middle of a braid session.
 static void webServerTask(void* param) {
   for (;;) {
     authServer.handleClient();

@@ -1,7 +1,8 @@
 // ============================================================================
-//  AuthManager.ino  —  לוגיקת משתמשים (הרשמה/כניסה/קוד זמני), כל התקשורת
-//  הרשמה/כניסה: מול Firebase Auth REST API (HTTPClient), בנפרד מחשבון ה"מכשיר"
-//  כתיבה/קריאה של users/codes: דרך Firestore עם הרשאות חשבון המכשיר (fbdo הקיים).
+//  AuthManager.ino — user logic (register/login/temporary code). Registration
+//  and login go through the Firebase Auth REST API (HTTPClient), separate
+//  from the "device" account; reading/writing users/codes goes through
+//  Firestore using the device account's permissions (the existing fbdo).
 // ============================================================================
 #include "Config.h"
 #include <HTTPClient.h>
@@ -14,7 +15,7 @@ static String fsStrGet(FirebaseJson& doc, const String& fieldName) {
   return d.success ? d.to<String>() : "";
 }
 
-// קריאה ל-Firebase Auth REST (signUp/signIn מחזירים idToken+localId ב-JSON)
+// Calls the Firebase Auth REST API (signUp/signIn return idToken+localId as JSON)
 static bool authRest(const String& endpoint, const String& email, const String& pass, String& uidOut, String& errOut) {
   HTTPClient http;
   String url = "https://identitytoolkit.googleapis.com/v1/accounts:" + endpoint + "?key=" + String(FB_API_KEY);
@@ -36,7 +37,7 @@ static bool authRest(const String& endpoint, const String& email, const String& 
   return false;
 }
 
-// ---- הרשמה: יוצר חשבון Auth + מסמך users/{uid} ----
+// ---- Register: creates an Auth account + a users/{uid} document ----
 bool authRegister(const String& email, const String& pass, const String& name, String& uidOut, String& errOut) {
   if (!authRest("signUp", email, pass, uidOut, errOut)) return false;
 
@@ -48,12 +49,12 @@ bool authRegister(const String& email, const String& pass, const String& name, S
   return true;
 }
 
-// ---- כניסה: מאמת מול Auth ואז שולף name+role מ-Firestore ----
+// ---- Login: authenticates against Auth, then fetches name+role from Firestore ----
 bool authLogin(const String& email, const String& pass, String& uidOut, String& nameOut, String& roleOut, String& errOut) {
   if (!authRest("signInWithPassword", email, pass, uidOut, errOut)) return false;
 
   if (!Firebase.Firestore.getDocument(&authFbdo, FIREBASE_PROJECT_ID, "", ("users/" + uidOut).c_str(), "")) {
-    nameOut = email; roleOut = "user"; return true;   // אין מסמך
+    nameOut = email; roleOut = "user"; return true;   // no document
   }
   FirebaseJson doc; doc.setJsonData(authFbdo.payload());
   nameOut = fsStrGet(doc, "name"); if (nameOut.length() == 0) nameOut = email;
@@ -61,13 +62,13 @@ bool authLogin(const String& email, const String& pass, String& uidOut, String& 
   return true;
 }
 
-// ---- יצירת קוד זמני: מגריל, מוודא שאינו תפוס ב-Firestore, שומר ----
+// ---- Generates a temporary code: rolls one, checks it's free in Firestore, saves it ----
 String authGenerateCode(const String& uid, const String& name) {
   String code;
   for (int tries = 0; tries < 10; tries++) {
-    code = String(1000 + random(9000));                 // 4 ספרות
+    code = String(1000 + random(9000));                 // 4 digits
     if (!Firebase.Firestore.getDocument(&authFbdo, FIREBASE_PROJECT_ID, "", ("codes/" + code).c_str(), ""))
-      break;                                             // אין מסמך כזה => פנוי
+      break;                                             // no such document => free
   }
   FirebaseJson json;
   json.set("fields/uid/stringValue", uid);

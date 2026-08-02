@@ -1,62 +1,75 @@
 //  FirebaseManager.ino
+//
+//  NOTE: Firebase.Firestore.* / Firebase.begin() / Firebase.signUp() calls in
+//  this file are synchronous network I/O from the Firebase_ESP_Client library
+//  — they block for the duration of the HTTPS request (typically well under a
+//  second, but not instant). The rest of the app (second_esp32.ino's state
+//  machine, motor ticks, touch screen) is fully non-blocking, but these calls
+//  are the one remaining exception: making them async too would require
+//  switching to the library's lower-level async request API, which is a
+//  bigger change than this refactor covers. In practice this only matters at
+//  the couple of points where a session enters ST_VALIDATING_CODE or saves an
+//  order — the WebServer.ino HTTP endpoints for the app run on Core 0, a
+//  separate task, so they are unaffected either way.
 #include "Config.h"
-#include <WiFi.h>                    // חיבור לרשת
-#include <Firebase_ESP_Client.h>     // ספריית Firebase
-#include "addons/TokenHelper.h"      // עזר לטוקן ההתחברות
+#include <WiFi.h>                    // network connection
+#include <Firebase_ESP_Client.h>     // Firebase library
+#include "addons/TokenHelper.h"      // login token helper
 
-FirebaseData   fbdo;                 // אובייקט נתונים (לא static — נדרש גם ב-AuthManager.ino)
-static FirebaseAuth   fbAuth;        // פרטי התחברות
-static FirebaseConfig fbConfig;      // הגדרות
-static bool fbReady = false;         // true רק אם Firebase עלה בהצלחה
+FirebaseData   fbdo;                 // data object (not static — also needed in AuthManager.ino)
+static FirebaseAuth   fbAuth;        // login details
+static FirebaseConfig fbConfig;      // settings
+static bool fbReady = false;         // true only if Firebase came up successfully
 
-// עוזר: חילוץ שדה טקסט (stringValue) ממסמך Firestore
+// Helper: extract a text field (stringValue) from a Firestore document
 static String fsStr(FirebaseJson& doc, const String& fieldName) {
   FirebaseJsonData d;
   doc.get(d, "fields/" + fieldName + "/stringValue");
   return d.success ? d.to<String>() : "";
 }
 
-// עוזר: חילוץ שדה בוליאני (booleanValue) ממסמך Firestore
+// Helper: extract a boolean field (booleanValue) from a Firestore document
 static bool fsBool(FirebaseJson& doc, const String& fieldName) {
   FirebaseJsonData d;
   doc.get(d, "fields/" + fieldName + "/booleanValue");
   return d.success && d.to<bool>();
 }
 
-// אתחול — נקרא מ-setup() הראשי
+// Init — called from the main setup()
 void firebaseSetup() {
   Serial.println("[FB] Action: connecting to WiFi...");
-  if (String(WIFI_SSID) == "YOUR_WIFI") {      // לא מולאו פרטים
+  if (String(WIFI_SSID) == "YOUR_WIFI") {      // not configured
     Serial.println("[FB] Result: not configured -> DEMO mode");
     fbReady = false; return;
   }
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);         // מתחבר ל-WiFi
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);         // connect to WiFi
   uint32_t t0 = millis();
-  while (WiFi.status() != WL_CONNECTED && millis() - t0 < 10000) delay(300);  // עד 10ש'
-  if (WiFi.status() != WL_CONNECTED) {          // נכשל
+  while (WiFi.status() != WL_CONNECTED && millis() - t0 < 10000) delay(300);  // up to 10s
+  if (WiFi.status() != WL_CONNECTED) {          // failed
     Serial.println("[FB] Result: WiFi FAILED -> DEMO mode");
     fbReady = false; return;
   }
   Serial.print("[FB] Result: WiFi OK, IP="); Serial.println(WiFi.localIP());
 
-  fbConfig.api_key = FB_API_KEY;                // מפתח API (מספיק ל-Firestore, בלי database_url)
+  fbConfig.api_key = FB_API_KEY;                // API key (enough for Firestore, no database_url needed)
   fbConfig.token_status_callback = tokenStatusCallback;
 
-  fbAuth.user.email    = FB_DEVICE_EMAIL;       // חשבון המכשיר
+  fbAuth.user.email    = FB_DEVICE_EMAIL;       // device account
   fbAuth.user.password  = FB_DEVICE_PASS;
 
-  // ⚠️ חשוב: לא לבדוק Firebase.ready() בלולאה צפופה! כל בדיקה כזו יכולה לגרום
-  // לספרייה לשלוח בקשת אימות חדשה לגוגל. בדיקה תכופה מדי (כל 200 מ"ש) גרמה
-  // לעשרות בקשות תוך שניות וחסימה זמנית ע"י גוגל (TOO_MANY_ATTEMPTS_TRY_LATER).
-  // לכן: קריאה אחת בלבד ל-begin(), המתנה קבועה, ובדיקה בודדת של ready().
+  // Important: don't poll Firebase.ready() in a tight loop! Each check can
+  // make the library send a new auth request to Google. Polling too often
+  // (every 200ms) once caused dozens of requests within seconds and a
+  // temporary block from Google (TOO_MANY_ATTEMPTS_TRY_LATER). So: a single
+  // begin() call, a fixed wait, then one single ready() check.
   Serial.println("[FB] Action: signing in device account...");
-  Firebase.begin(&fbConfig, &fbAuth);           // מנסה כניסה (פעם אחת בלבד)
-  Firebase.reconnectWiFi(true);                 // חיבור מחדש אוטומטי
+  Firebase.begin(&fbConfig, &fbAuth);           // attempt sign-in (once only)
+  Firebase.reconnectWiFi(true);                 // auto reconnect
 
-  delay(4000);                                  // ממתין בלי לבדוק ready() בלולאה
+  delay(4000);                                  // wait without polling ready() in a loop
 
-  if (!Firebase.ready()) {                      // בדיקה בודדת
-    // אולי החשבון עוד לא קיים — מנסה ליצור אותו (הרשמה חד-פעמית, פעם אחת בלבד)
+  if (!Firebase.ready()) {                      // single check
+    // maybe the account doesn't exist yet — try creating it (one-time signup)
     Serial.println("[FB] Result: sign-in failed, trying to create device account...");
     if (Firebase.signUp(&fbConfig, &fbAuth, FB_DEVICE_EMAIL, FB_DEVICE_PASS)) {
       Serial.println("[FB] Result: device account created");
@@ -64,17 +77,17 @@ void firebaseSetup() {
       Serial.print("[FB] Result: signUp FAILED: ");
       Serial.println(fbConfig.signer.signupError.message.c_str());
     }
-    delay(4000);                                // המתנה נוספת, בלי לולאה
+    delay(4000);                                // one more wait, no loop
   }
 
-  fbReady = Firebase.ready();                   // בדיקה בודדת סופית
+  fbReady = Firebase.ready();                   // final single check
   Serial.println(fbReady ? "[FB] Result: Firestore ready" : "[FB] Result: NOT ready -> DEMO mode");
 }
 
-// מאמת קוד. מחזיר true אם תקין וממלא name+uid.
+// Validates a code. Returns true if valid and fills name+uid.
 bool fbValidateCode(const String& code, String& name, String& uid) {
   Serial.println("[FB] Action: validating code " + code + " ...");
-  if (!fbReady) {                    // מצב דמו
+  if (!fbReady) {                    // demo mode
     name = "Guest"; uid = "demo";
     bool ok = (code.length() == CODE_LENGTH);
     Serial.println(String("[FB][DEMO] Result: ") + (ok ? "ACCEPTED" : "REJECTED"));
@@ -101,23 +114,25 @@ bool fbValidateCode(const String& code, String& name, String& uid) {
   return true;
 }
 
-// משחרר קוד אחרי שימוש מוצלח: מוחק את מסמך codes/{code} לגמרי (לא רק מסמן
-// used=true) — כך שהמספר בן 4 הספרות חוזר להיות פנוי לשימוש חוזר להגרלה
-// הבאה (יש רק 9000 קומבינציות אפשריות, בלי שחרור הן היו "נגמרות" עם הזמן).
+// Releases a code after successful use: deletes the codes/{code} document
+// entirely (not just marking used=true) — so the 4-digit number becomes free
+// for reuse (there are only 9000 possible combinations; without releasing
+// them they would eventually run out).
 void fbReleaseCode(const String& code) {
   if (!fbReady) return;
   Firebase.Firestore.deleteDocument(&fbdo, FIREBASE_PROJECT_ID, "", ("codes/" + code).c_str());
   Serial.println("[FB] Action: code " + code + " released (deleted, free for reuse)");
 }
 
-// עוזר: חילוץ שדה מספרי (integerValue) ממסמך Firestore
+// Helper: extract a numeric field (integerValue) from a Firestore document
 static long fsInt(FirebaseJson& doc, const String& fieldName) {
   FirebaseJsonData d;
   doc.get(d, "fields/" + fieldName + "/integerValue");
   return d.success ? d.to<int>() : 0;
 }
 
-// עוזר: הופך מסמך Firestore בודד ל-JSON פשוט (בפורמט שהאפליקציה מצפה לו), ומצרף לפלט
+// Helper: turns a single Firestore document into simple JSON (the format the
+// app expects) and appends it to the output
 static void appendOrderJson(FirebaseJson& doc, const String& docName, String& out) {
   String id = docName.substring(docName.lastIndexOf('/') + 1);
   if (out.length()) out += ",";
@@ -131,8 +146,9 @@ static void appendOrderJson(FirebaseJson& doc, const String& docName, String& ou
   out += "}";
 }
 
-// שולף הזמנות מ-Firestore ומחזיר JSON מוכן לשליחה לאפליקציה: "[{...},{...}]".
-// uidFilter לא ריק -> רק ההזמנות של אותו uid (לקוח); ריק -> כל ההזמנות (מנהל).
+// Fetches orders from Firestore and returns JSON ready to send to the app:
+// "[{...},{...}]". Non-empty uidFilter -> only that uid's orders (customer);
+// empty -> all orders (admin).
 String fbListOrders(const String& uidFilter) {
   if (!fbReady) return "[]";
   if (!Firebase.Firestore.listDocuments(&fbdo, FIREBASE_PROJECT_ID, "", "orders", 300, "", "", "", false)) {
@@ -157,13 +173,13 @@ String fbListOrders(const String& uidFilter) {
     FirebaseJsonData nameField;
     doc.get(nameField, "name");
     String docName = nameField.to<String>();
-    if (uidFilter.length() && fsStr(doc, "uid") != uidFilter) continue;   // סינון לפי משתמש
+    if (uidFilter.length() && fsStr(doc, "uid") != uidFilter) continue;   // filter by user
     appendOrderJson(doc, docName, out);
   }
   return "[" + out + "]";
 }
 
-// מוחק הזמנה בודדת לפי מזהה המסמך (orders/{orderId})
+// Deletes a single order by document id (orders/{orderId})
 bool fbDeleteOrder(const String& orderId) {
   if (!fbReady) return true;
   bool ok = Firebase.Firestore.deleteDocument(&fbdo, FIREBASE_PROJECT_ID, "", ("orders/" + orderId).c_str());
@@ -171,27 +187,27 @@ bool fbDeleteOrder(const String& orderId) {
   return ok;
 }
 
-// שומר הזמנה חדשה תחת orders/{orderId}.
-// status: "completed" = קליעה הסתיימה בהצלחה | "emergency" = נעצרה בחירום.
+// Saves a new order under orders/{orderId}.
+// status: "completed" = braid finished successfully | "emergency" = stopped in an emergency.
 void fbSaveOrder(const String& uid, const String& name,
                  const String& extensions, const String& hairColor,
                  const String& status) {
   Serial.println("[FB] Action: saving order (" + status + ")... name=" + name +
                   " ext=" + extensions + " hair=" + hairColor);
-  if (!fbReady) {                    // מצב דמו — רק מדפיס
+  if (!fbReady) {                    // demo mode — just log it
     Serial.printf("[FB][DEMO] Result: order NOT saved (no Firebase): %s | %s | %s | %s\n",
                   name.c_str(), extensions.c_str(), hairColor.c_str(), status.c_str());
     return;
   }
-  String orderId = uid + "_" + String(millis());  // מזהה ייחודי (uid + זמן)
+  String orderId = uid + "_" + String(millis());  // unique id (uid + time)
 
-  FirebaseJson json;                 // בונה את מסמך ה-Firestore
+  FirebaseJson json;                 // builds the Firestore document
   json.set("fields/uid/stringValue",        uid);
   json.set("fields/name/stringValue",       name);
   json.set("fields/extensions/stringValue", extensions);
   json.set("fields/hairColor/stringValue",  hairColor);
   json.set("fields/status/stringValue",     status);          // "completed" / "emergency"
-  json.set("fields/createdAt/integerValue", String(millis()));  // זמן יחסי מהדלקת הלוח
+  json.set("fields/createdAt/integerValue", String(millis()));  // time relative to board boot
 
   if (Firebase.Firestore.createDocument(&fbdo, FIREBASE_PROJECT_ID, "",
         ("orders/" + orderId).c_str(), json.raw())) {

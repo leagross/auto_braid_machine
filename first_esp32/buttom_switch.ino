@@ -1,11 +1,11 @@
-#include "Config.h"            
+#include "Config.h"
 
-// אתחול הכפתור
+// Button init
 void buttonSetup() {
-  pinMode(BUTTON_PIN, INPUT_PULLUP);// נגד משיכה פנימי מעלה
+  pinMode(BUTTON_PIN, INPUT_PULLUP); // internal pull-up resistor
 }
 
-//אם הכפתור לחוץ 
+// True if the button is currently pressed
 bool buttonPressed() {
   return digitalRead(BUTTON_PIN) == LOW;
 }
