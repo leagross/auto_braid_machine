@@ -1,0 +1,213 @@
+.page { min-height: 100vh; background: var(--bg); }
+
+.header {
+  max-width: 600px;
+  margin: 0 auto;
+  padding: 20px 24px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.back {
+  background: none; border: none; color: var(--muted);
+  cursor: pointer; font-size: 14px; text-align: right;
+  padding: 0; width: fit-content;
+}
+.back:hover { color: var(--text); }
+
+.title { font-size: 22px; font-weight: 700; color: var(--text); text-align: center; }
+
+.main {
+  max-width: 600px;
+  margin: 0 auto;
+  padding: 16px 24px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.newBtn {
+  background: var(--primary);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius);
+  padding: 13px;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background .2s;
+}
+.newBtn:hover { background: var(--primary-h); }
+
+.loading { text-align: center; color: var(--muted); padding: 40px; }
+
+.error {
+  background: rgba(255,92,108,.12);
+  border: 1px solid var(--danger);
+  border-radius: 10px;
+  color: var(--danger);
+  padding: 12px;
+  text-align: center;
+}
+
+.empty {
+  text-align: center;
+  padding: 60px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+}
+.emptyIcon { font-size: 48px; }
+.empty p   { color: var(--text); font-size: 16px; font-weight: 600; }
+.emptySub  { color: var(--muted) !important; font-size: 14px !important; font-weight: 400 !important; }
+
+.list { display: flex; flex-direction: column; gap: 12px; }
+
+.card {
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.cardTop {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.braidType { font-weight: 700; font-size: 16px; color: var(--text); }
+
+.status {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 20px;
+}
+
+.cardRow {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 14px;
+  color: var(--muted);
+}
+.cardRow span:nth-child(even) { color: var(--text); }
+
+.notes {
+  font-size: 13px;
+  color: var(--muted);
+  background: var(--bg);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+/* --- בנר הזמנה פעילה --- */
+.activeBanner {
+  background: rgba(108,99,255,.15);
+  border: 2px solid var(--primary);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.activePulse {
+  width: 10px; height: 10px;
+  background: var(--primary);
+  border-radius: 50%;
+  flex-shrink: 0;
+  animation: pulse 1.2s infinite;
+}
+
+@keyframes pulse {
+  0%,100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: .4; transform: scale(1.4); }
+}
+
+.activeBtns {
+  display: flex;
+  gap: 8px;
+  margin-right: auto;
+}
+
+.stopBtn {
+  background: var(--success);
+  border: none; border-radius: 8px;
+  color: #fff; padding: 8px 14px;
+  font-size: 13px; font-weight: 700;
+  cursor: pointer;
+}
+.stopBtn:disabled { opacity: .5; }
+
+.emergencyBtn {
+  background: var(--danger);
+  border: none; border-radius: 8px;
+  color: #fff; padding: 8px 14px;
+  font-size: 13px; font-weight: 700;
+  cursor: pointer;
+}
+.emergencyBtn:disabled { opacity: .5; }
+
+/* --- כרטיס פעיל --- */
+.cardActive {
+  border-color: var(--primary) !important;
+  box-shadow: 0 0 0 3px rgba(108,99,255,.2);
+}
+
+/* --- כפתור הפעלה --- */
+.startBtn {
+  width: 100%;
+  padding: 11px;
+  background: var(--primary);
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  margin-top: 4px;
+  transition: background .2s;
+}
+.startBtn:hover:not(:disabled) { background: var(--primary-h); }
+.startBtn:disabled { opacity: .5; cursor: not-allowed; }
+
+.cancelBtn {
+  width: 100%;
+  padding: 10px;
+  background: transparent;
+  color: var(--danger);
+  border: 1.5px solid var(--danger);
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all .2s;
+}
+.cancelBtn:hover:not(:disabled) { background: rgba(255,92,108,.1); }
+.cancelBtn:disabled { opacity: .5; cursor: not-allowed; }
+
+.cardDate {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.runningTag {
+  text-align: center;
+  font-size: 13px;
+  color: var(--primary);
+  font-weight: 600;
+  padding: 6px;
+  background: rgba(108,99,255,.08);
+  border-radius: 8px;
+  margin-top: 4px;
+}

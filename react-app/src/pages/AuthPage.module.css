@@ -1,0 +1,100 @@
+.btn {
+  width: 100%;
+  padding: 13px;
+  background: var(--primary);
+  color: #fff;
+  font-size: 16px;
+  font-weight: 600;
+  border: none;
+  border-radius: 9px;
+  cursor: pointer;
+  margin-top: 4px;
+  transition: background 0.2s, transform 0.1s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+}
+
+.btn:hover:not(:disabled)  { background: var(--primary-h); }
+.btn:active:not(:disabled) { transform: scale(0.98); }
+.btn:disabled              { opacity: 0.6; cursor: not-allowed; }
+
+.apiError {
+  background: rgba(255,92,108,0.12);
+  border: 1px solid var(--danger);
+  border-radius: 8px;
+  color: var(--danger);
+  font-size: 13px;
+  padding: 10px 14px;
+  margin-bottom: 14px;
+  text-align: center;
+}
+
+.switchLink {
+  text-align: center;
+  margin-top: 22px;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.switchLink a {
+  color: var(--primary);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.switchLink a:hover { text-decoration: underline; }
+
+/* Role selector */
+.roleGroup {
+  margin-bottom: 18px;
+}
+
+.roleLabel {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+.roleButtons {
+  display: flex;
+  gap: 10px;
+}
+
+.roleBtn {
+  flex: 1;
+  padding: 10px;
+  background: #12141e;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.roleBtn:hover   { border-color: var(--primary); color: var(--text); }
+
+.roleActive {
+  border-color: var(--primary) !important;
+  background: rgba(108,99,255,0.15) !important;
+  color: var(--text) !important;
+}
+
+/* Spinner */
+.spinner {
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  border: 2px solid rgba(255,255,255,0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }

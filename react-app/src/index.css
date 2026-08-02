@@ -1,0 +1,26 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:       #0f1117;
+  --surface:  #1a1d27;
+  --border:   #2e3148;
+  --primary:  #6c63ff;
+  --primary-h:#857dff;
+  --danger:   #ff5c6c;
+  --success:  #3ecf8e;
+  --text:     #e8eaf0;
+  --muted:    #8b8fa8;
+  --radius:   14px;
+}
+
+body {
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#root { width: 100%; }
