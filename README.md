@@ -7,22 +7,42 @@ on the backend, a touch screen, 3 stepper motors, and 2 sensors.
 
 ## 🧠 Architecture
 
-```
-┌────────────────────────┐         UART (115200)         ┌────────────────────────────┐
-│      ESP32 FIRST       │  TX/RX + shared GND ◄────────►│        ESP32 SECOND         │
-│   (sensors - "slave")  │                               │   (brain / "master")        │
-├────────────────────────┤                               ├────────────────────────────┤
-│ • start/emergency btn  │                               │ • TFT touch screen (ILI9341)│
-│ • ultrasonic sensor    │                               │ • WiFi + HTTP server        │
-│ • TCS34725 color (I2C) │                               │ • rail motor                │
-│ • extension motor      │                               │ • braid motor               │
-└────────────────────────┘                               └───────────┬────────────────┘
-                                                                       │ HTTPS
-        ┌────────────────┐        HTTP (local network)                ▼
-        │   React App    │ ─────────────────────────────►  ESP32 SECOND's web server
-        └────────────────┘                                            │
-                                                                       ▼
-                                                              Firebase (Auth + Firestore)
+```mermaid
+flowchart LR
+    subgraph FIRST["🔵 ESP32 FIRST — sensors (slave)"]
+        BTN["Start / Emergency<br/>Button"]
+        US["Ultrasonic Sensor<br/>(HC-SR04)"]
+        COLOR["Color Sensor<br/>(TCS34725, I2C)"]
+        DISP["Extension Motor<br/>(carousel)"]
+    end
+
+    subgraph SECOND["🟢 ESP32 SECOND — brain (master)"]
+        SCR["TFT Touch Screen<br/>(ILI9341)"]
+        RAIL["Rail Motor"]
+        BRAID["Braid Motor"]
+        WEB["HTTP Server :80"]
+    end
+
+    APP["🟣 React App"]
+
+    subgraph CLOUD["☁️ Firebase"]
+        AUTH["Auth"]
+        FS["Firestore"]
+    end
+
+    FIRST <-->|"UART 115200<br/>TX/RX + shared GND"| SECOND
+    APP -->|"HTTP<br/>local network"| WEB
+    SECOND -->|HTTPS| AUTH
+    SECOND -->|HTTPS| FS
+
+    classDef first fill:#dbeafe,stroke:#2563eb,color:#1e3a8a;
+    classDef second fill:#dcfce7,stroke:#16a34a,color:#14532d;
+    classDef app fill:#f3e8ff,stroke:#9333ea,color:#581c87;
+    classDef cloud fill:#fff7ed,stroke:#ea580c,color:#7c2d12;
+    class BTN,US,COLOR,DISP first;
+    class SCR,RAIL,BRAID,WEB second;
+    class APP app;
+    class AUTH,FS cloud;
 ```
 
 **Division of roles:** the second board is the master — it drives the screen, the rail+braid
