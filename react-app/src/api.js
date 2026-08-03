@@ -13,7 +13,7 @@
 // ============================================================================
 // ה-ESP32 שומר createdAt כמספר millis() (זמן מאז הדלקת הלוח, לא תאריך אמיתי),
 // והאפליקציה שומרת Firestore Timestamp (עם שדה .seconds). ממיר את שניהם למספר להשוואה.
-function toSortMs(createdAt) {
+export function toSortMs(createdAt) {
   if (!createdAt) return 0;
   if (typeof createdAt === "number") return createdAt;      // מגיע מה-ESP32
   if (createdAt.seconds) return createdAt.seconds * 1000;    // Firestore Timestamp
