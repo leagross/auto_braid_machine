@@ -186,8 +186,11 @@ npm run dev
 ## 📁 File structure
 
 ```
+README.md                    this file
+function_map.md               every function in the project, what it does, and the logic flow
+
 first_esp32/                 first ESP32 (sensors + extension motor) — one file per component
-  ├─ Config.h                pins and constants
+  ├─ Config.h                pins and constants (no secrets — nothing to configure here)
   ├─ first_esp32.ino         setup/loop, UART, emergency-button monitoring
   ├─ buttom_switch.ino       start/emergency button
   ├─ Ultrasonic_esp32.ino    ultrasonic sensor
@@ -196,6 +199,8 @@ first_esp32/                 first ESP32 (sensors + extension motor) — one fil
 
 second_esp32/                second ESP32 (master) — one file per module
   ├─ Config.h                pins, motor parameters, WiFi/Firebase (via Secrets.h)
+  ├─ Secrets.h.example       template for Secrets.h — copy it, fill in your own values (see Setup below)
+  ├─ Secrets.h               your real WiFi/Firebase values — not in git, you create this yourself
   ├─ second_esp32.ino        the main session state machine (the whole flow)
   ├─ DisplayManager.ino      ← the screens (keypad, extension choice, messages)
   ├─ Motors.ino              rail + braid motors
@@ -203,7 +208,9 @@ second_esp32/                second ESP32 (master) — one file per module
   └─ FirebaseManager.ino / AuthManager.ino / WebServer.ino  ← Firebase + the app's HTTP API
 
 react-app/                   React app
+  ├─ vite.config.js          Vite build config + Vitest test config
   ├─ src/api.js              talks to the second board's HTTP server (register/login/codes/orders)
+  ├─ src/api.test.js         unit tests for api.js — run with `npm test`
   ├─ src/firebase.js         unused — kept for reference, nothing imports from it
   └─ src/pages/              Login/Register/Dashboard/MyAppointments
 ```
