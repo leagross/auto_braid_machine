@@ -90,6 +90,8 @@ carousel logic in [first_esp32/Dispenser.ino](first_esp32/Dispenser.ino).
 
 ## 🔌 Wiring (pin map)
 
+See [components.md](components.md) for the full parts list (bill of materials) behind this wiring.
+
 ### ESP32 FIRST — sensors + extension motor (no screen → plenty of free pins)
 
 | Component | Pins |
@@ -105,7 +107,7 @@ carousel logic in [first_esp32/Dispenser.ino](first_esp32/Dispenser.ino).
 | Component | Pins |
 |------|-------|
 | TFT screen (VSPI) | `SCK=18`, `MOSI=23`, `MISO=19`, `CS=5`, `DC=4`, `T_CS=15`, `T_IRQ=35` |
-| Rail motor (ULN2003) | `26, 25, 14, 13` — clean, no conflicts |
+| Rail motor (L298N, bipolar) | `26, 25, 14, 13` — clean, no conflicts |
 | Braid motor / stepper 1 (ULN2003) | `27, 33, 32, 3` — clean (GPIO3=RX0, disconnect while flashing) |
 | UART → first board | `TX=17`, `RX=16` (regular pins; the ESP32 routes UART2 to any GPIO) |
 
@@ -118,10 +120,9 @@ carousel logic in [first_esp32/Dispenser.ino](first_esp32/Dispenser.ino).
 >
 > ℹ️ **Why the extension motor is on the first board:** on the second board (with its soldered
 > screen) the pin budget is completely full — screen (6) + UART (2) + 2 motors (8) = 16, plus
-> `GPIO0/1` are inaccessible and `GPIO21/22` are faulty on this specific board. After rail+braid
-> there's only one free pin left (`GPIO3`), not enough for another motor. So the extension motor
-> is driven remotely over UART — the second board sends `DISP:<n>` and the first board (which has
-> plenty of free pins) does the actual turning.
+> `GPIO0/1` are inaccessible. After rail+braid there's only one free pin left (`GPIO3`), not
+> enough for another motor. So the extension motor is driven remotely over UART — the second board
+> sends `DISP:<n>` and the first board (which has plenty of free pins) does the actual turning.
 >
 > ⚠️ **GPIO3 (braid motor IN4) is RX0** — it must be disconnected while flashing the second board,
 > and reconnected once flashing succeeds.
@@ -196,6 +197,7 @@ npm run dev
 ```
 README.md                    this file
 function_map.md               every function in the project, what it does, and the logic flow
+components.md                 bill of materials — every physical part and what it's for
 
 first_esp32/                 first ESP32 (sensors + extension motor) — one file per component
   ├─ Config.h                pins and constants (no secrets — nothing to configure here)
