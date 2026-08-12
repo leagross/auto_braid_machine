@@ -1,0 +1,44 @@
+name: Build
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  compile-first-esp32:
+    # first_esp32 only needs public libraries, so CI can compile it end to end.
+    # second_esp32 also needs TFT9341Touch (by Avi Hayun), which isn't published
+    # to the Arduino Library Manager index — there's no public source for CI to
+    # install, so it's verified manually instead (Arduino IDE → Verify). See the
+    # Setup section in README.md, including the required Partition Scheme.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: arduino/setup-arduino-cli@v2
+      - name: Install ESP32 core
+        run: |
+          arduino-cli config init
+          arduino-cli config add board_manager.additional_urls https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
+          arduino-cli core update-index
+          arduino-cli core install esp32:esp32
+      - name: Install libraries
+        run: |
+          arduino-cli lib install "Adafruit TCS34725"
+      - name: Compile first_esp32
+        run: arduino-cli compile --fqbn esp32:esp32:esp32 first_esp32
+
+  react-app:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: react-app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci
+      - run: npm test
+      - run: npm run build

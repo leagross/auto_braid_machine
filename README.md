@@ -174,7 +174,11 @@ second board's HTTP server ([second_esp32/WebServer.ino](second_esp32/WebServer.
    account.
    > If left unfilled, the board runs in **demo mode**: any 4-digit code is accepted, the name is
    > "Guest", and the order is only logged to Serial (handy for testing the hardware with no network).
-4. Flash each sketch to its matching board.
+4. On the second board, set **Tools → Partition Scheme → "Huge APP (3MB No OTA/1MB SPIFFS)"**.
+   The default partition scheme only allows a 1.2MB app, and this sketch (Firebase + TLS +
+   WebServer + the display library, combined) is ~1.3MB — it won't fit and flashing will fail with
+   `Sketch too big`. `first_esp32` is small enough that its default scheme is fine.
+5. Flash each sketch to its matching board.
 
 ### The app
 
