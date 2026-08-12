@@ -3,6 +3,10 @@
 An embedded system with **2 ESP32 boards** talking over **UART**, a **React** app with **Firebase**
 on the backend, a touch screen, 3 stepper motors, and 2 sensors.
 
+🎥 **[Demo video](https://drive.google.com/file/d/1u_yvwhhGyoFPkr-3GAMNtI0DH4gLbsko/view?usp=sharing)** —
+access is by request; if you don't have permission yet, open the link and use Drive's "Request
+access" button.
+
 ---
 
 ## 🧠 Architecture
