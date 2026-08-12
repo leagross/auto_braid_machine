@@ -21,7 +21,7 @@ export function toSortMs(createdAt) {
 }
 
 // כתובת ה-ESP32 השני ברשת המקומית (עדכני לפי ה-IP שמודפס ב-Serial Monitor בהדלקה)
-const ESP32_URL = "http://192.168.0.101";
+const ESP32_URL = "http://192.168.0.100";
 
 async function esp32Post(path, payload) {
   const res = await fetch(ESP32_URL + path, {
