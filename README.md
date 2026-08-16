@@ -1,15 +1,56 @@
-# 🪢 AutoBraid — Autonomous Hair-Braiding Machine
+# 🪢 AutoBraid
 
-An embedded system with **2 ESP32 boards** talking over **UART**, a **React** app with **Firebase**
-on the backend, a touch screen, 3 stepper motors, and 2 sensors.
+AutoBraid is an autonomous hair-braiding machine: two ESP32 microcontrollers coordinate motors,
+sensors, and a touchscreen to dispense a hair extension and braid it in, while a React + Firebase
+web app handles customer registration, machine access codes, and order history. It's a full-stack,
+multidisciplinary project — embedded firmware, distributed microcontroller communication, a web
+frontend, cloud backend, and a physical, 3D-printed mechanical build.
+
+---
+
+## Demo
 
 🎥 **[Demo video](https://drive.google.com/file/d/1u_yvwhhGyoFPkr-3GAMNtI0DH4gLbsko/view?usp=sharing)** —
 access is by request; if you don't have permission yet, open the link and use Drive's "Request
 access" button.
 
+TODO: INSERT DEMO VIDEO LINK (replace the link above once a public/unrestricted copy is ready)
+
+The video demonstrates the full workflow: machine startup, touchscreen code entry and extension
+selection, the sensor checks (distance + optional hair-color scan), the extension carousel
+dispensing, the braiding mechanism running, and a completed order. See [docs/demo.md](docs/demo.md)
+for the shot list this video is expected to cover.
+
 ---
 
-## 🧠 Architecture
+## Key Engineering Features
+
+- **Dual ESP32 architecture** — a master (screen, motors, cloud) and a slave (sensors, emergency
+  button, extension motor), coordinating over a hand-rolled UART protocol
+- **Touchscreen control** — ILI9341 TFT with resistive touch, driving the entire user-facing flow
+- **UART communication** — 115200-baud ASCII protocol, async request/poll with timeouts, never
+  blocking either board
+- **Motor-control system** — three steppers, two different driver topologies (unipolar via
+  ULN2003, bipolar via L298N), all non-blocking
+- **Stepper motors** — 28BYJ-48 x3, driving the rail, the braid mechanism, and the extension
+  carousel
+- **Rail mechanism** — vertical positioning for the braiding process
+- **RGB sensing** — TCS34725 color sensor, resolving "match my hair" extension requests
+- **Distance sensing** — HC-SR04 ultrasonic sensor, gating braiding on correct hair positioning
+- **Emergency handling** — a single button doing double duty as confirm/all-clear and
+  emergency-stop, with immediate motor de-energizing
+- **State-machine-based firmware** — both boards run explicit, non-blocking state machines; no
+  `delay()` in the control path
+- **React frontend** — registration, login, machine-code generation, and order history
+- **Firebase integration** — Auth + Cloud Firestore, accessed only through the master ESP32's HTTP
+  API (never directly from the app)
+- **Custom mechanical design** — braiding, rail, and carousel-dispenser mechanisms
+- **3D-printed components** — part of the physical build (see [Mechanical Design](docs/mechanical_design.md)
+  for what's documented so far)
+
+---
+
+## System Architecture
 
 ```mermaid
 flowchart LR
@@ -50,86 +91,52 @@ flowchart LR
 ```
 
 **Division of roles:** the second board is the master — it drives the screen, the rail+braid
-motors, and talks to Firebase. It also runs a small HTTP server that the React app calls into
-(the app never talks to Firebase directly — see [react-app/src/api.js](react-app/src/api.js)).
-The first board is the slave: it reports distance/color readings on request, reports the
-emergency button, **and also drives the extension carousel motor on request from the second
-board** — moved there because the second board (with its soldered-on screen) doesn't have
-enough free pins for all 3 motors.
+motors, and talks to Firebase. It also runs a small HTTP server that the React app calls into (the
+app never talks to Firebase directly — see [react-app/src/api.js](react-app/src/api.js)). The first
+board is the slave: it reports distance/color readings on request, reports the emergency button,
+**and also drives the extension carousel motor on request from the second board** — moved there
+because the second board (with its soldered-on screen) doesn't have enough free pins for all 3
+motors.
 
 **Non-blocking design:** both boards run as explicit state machines, ticked once per `loop()`
-iteration. Nothing — not a touch, not a UART reply, not a motor move — blocks the board while
-waiting; each step is "enter once, poll every tick until done". This keeps the emergency button
-and the app's HTTP requests responsive at all times, including mid-motion. See the state list at
-the top of [second_esp32/second_esp32.ino](second_esp32/second_esp32.ino) and the non-blocking
-carousel logic in [first_esp32/Dispenser.ino](first_esp32/Dispenser.ino).
+iteration — see [docs/state_machines.md](docs/state_machines.md) for the full diagrams. Nothing — not a
+touch, not a UART reply, not a motor move — blocks the board while waiting; each step is "enter once,
+poll every tick until done". This keeps the emergency button and the app's HTTP requests responsive
+at all times, including mid-motion.
+
+For a deeper block diagram and per-board responsibility breakdown, see
+[docs/hardware_architecture.md](docs/hardware_architecture.md). For the full user-facing and
+system-level flow, see [docs/system_flow.md](docs/system_flow.md).
 
 ---
 
-## 🔄 Full logic flow
+## Hardware
 
-1. **App:** the user registers/logs in (email+password) and taps "Code for machine" → a 4-digit
-   temporary code is generated and stored under `codes/{code}`.
-2. **Machine screen:** keypad → the user types the code → the board validates it against Firebase
-   and fetches the name.
-3. `"Hi <name>"` → **choosing up to 3 extensions**: MyHair (match my hair color) / Green / Red /
-   Blonde / Black / None.
-4. `"INSERT HAIR"` → confirm (START).
-5. The second board asks the first for a **distance check** (ultrasonic). If MyHair was chosen,
-   the first board scans the hair color and returns the closest match.
-6. The **extension motor** (carousel) turns a **quarter turn** to each position in order and
-   dispenses; the user takes it.
-7. **Braiding:** the rail lowers and the braid motor spins — for one minute, or until stopped.
-8. **Emergency:** pressing the button on the first board → `EMG` → the second board stops the
-   braid → waits for an "all clear" confirmation → **resets** (rail goes back up) → returns to
-   the start.
-9. **Normal finish:** the rail goes up, the user confirms, and the order is saved under
-   `orders/{id}`. Shown in the app as order history.
+Full parts list, quantities, and roles: [hardware/BOM.md](hardware/BOM.md) (see also
+[components.md](components.md) for the original narrative version).
 
 ---
 
-## 🔌 Wiring (pin map)
+## Embedded Architecture
 
-See [components.md](components.md) for the full parts list (bill of materials) behind this wiring.
+Two ESP32 boards, each running a separate Arduino sketch:
 
-### ESP32 FIRST — sensors + extension motor (no screen → plenty of free pins)
+- **`first_esp32` (slave / sensors board)** — the start/emergency button, the ultrasonic sensor,
+  the color sensor, and (for pin-budget reasons — see
+  [docs/hardware_architecture.md](docs/hardware_architecture.md)) the extension/carousel motor.
+- **`second_esp32` (master / brain)** — the touchscreen UI, the rail and braid motors, WiFi +
+  Firebase, and the HTTP server the React app talks to. Its session logic is one 25-state state
+  machine — see [docs/state_machines.md](docs/state_machines.md).
 
-| Component | Pins |
-|------|-------|
-| Start/emergency button | `27` (INPUT_PULLUP) |
-| HC-SR04 ultrasonic | `TRIG=21`, `ECHO=19` |
-| TCS34725 color sensor (I2C) | `SDA=32`, `SCL=26`, `LED=33` |
-| Extension motor (ULN2003, carousel) | `2, 15, 18, 5` — clean, no conflicts |
-| UART → second board | `TX=17`, `RX=16` |
-
-### ESP32 SECOND — screen + rail/braid motors
-
-| Component | Pins |
-|------|-------|
-| TFT screen (VSPI) | `SCK=18`, `MOSI=23`, `MISO=19`, `CS=5`, `DC=4`, `T_CS=15`, `T_IRQ=35` |
-| Rail motor (L298N, bipolar) | `26, 25, 14, 13` — clean, no conflicts |
-| Braid motor / stepper 1 (ULN2003) | `27, 33, 32, 3` — clean (GPIO3=RX0, disconnect while flashing) |
-| UART → first board | `TX=17`, `RX=16` (regular pins; the ESP32 routes UART2 to any GPIO) |
-
-> ⚠️ **UART wiring:** `FIRST_TX(17) → SECOND_RX(16)`, `FIRST_RX(16) → SECOND_TX(17)`,
-> **and a shared GND between the boards is mandatory**.
->
-> ⚠️ **Don't use RX0/TX0** (GPIO3/GPIO1) for the link between the boards — that's UART0, used by
-> USB (flashing + Serial Monitor). The ESP32 routes `Serial2` to pins 16/17 in software, no
-> dedicated pins needed.
->
-> ℹ️ **Why the extension motor is on the first board:** on the second board (with its soldered
-> screen) the pin budget is completely full — screen (6) + UART (2) + 2 motors (8) = 16, plus
-> `GPIO0/1` are inaccessible. After rail+braid there's only one free pin left (`GPIO3`), not
-> enough for another motor. So the extension motor is driven remotely over UART — the second board
-> sends `DISP:<n>` and the first board (which has plenty of free pins) does the actual turning.
->
-> ⚠️ **GPIO3 (braid motor IN4) is RX0** — it must be disconnected while flashing the second board,
-> and reconnected once flashing succeeds.
+Every function in both sketches (and in the React app's data layer) is catalogued in
+[function_map.md](function_map.md).
 
 ---
 
-## 📡 UART protocol (ASCII lines, terminated with `\n`)
+## Communication
+
+The two boards talk over UART2 (115200 baud, ASCII lines terminated with `\n`). Full message
+table, wiring, and a sequence diagram of a normal session: [docs/uart_protocol.md](docs/uart_protocol.md).
 
 | Direction | Command | Meaning |
 |-------|--------|--------|
@@ -145,9 +152,65 @@ See [components.md](components.md) for the full parts list (bill of materials) b
 | FIRST → SECOND | `PONG` | reply to PING |
 | FIRST → SECOND | `DISPDONE` | the extension carousel finished turning |
 
+> ⚠️ **UART wiring:** `FIRST_TX(17) → SECOND_RX(16)`, `FIRST_RX(16) → SECOND_TX(17)`, and a shared
+> GND between the boards is mandatory. Don't use RX0/TX0 (GPIO3/GPIO1) for this link — that's
+> UART0, used by USB (flashing + Serial Monitor).
+
 ---
 
-## 🗂️ Firebase data structure (Cloud Firestore)
+## Sensors
+
+- **HC-SR04 ultrasonic** (first board, `TRIG=21`, `ECHO=19`) — checks the head/hair is within
+  `DIST_MIN_CM`–`DIST_MAX_CM` (7.0–16.0 cm) before braiding starts.
+- **TCS34725 RGB color sensor** (first board, I2C `SDA=32`/`SCL=26`, LED=`33`) — resolves the
+  "match my hair" extension color by matching raw RGB+Clear samples against 4 calibrated reference
+  colors.
+
+---
+
+## Motors and Actuators
+
+Three 28BYJ-48 steppers, driven two different ways — see
+[docs/mechanical_design.md](docs/mechanical_design.md) for the full breakdown:
+
+| Motor | Board | Driver | Pins |
+|---|---|---|---|
+| Extension motor (carousel) | first (slave) | ULN2003, unipolar | `2, 15, 18, 5` |
+| Rail motor | second (master) | L298N, bipolar | `26, 25, 14, 13` |
+| Braid motor | second (master) | ULN2003, unipolar | `27, 33, 32, 3` (GPIO3=RX0, disconnect while flashing) |
+
+> ⚠️ The rail motor's L298N phase table is **not interchangeable** with the ULN2003 motors' phase
+> table — see the warning comment in `second_esp32/Motors.ino`.
+
+---
+
+## Mechanical Design
+
+The physical build includes a braiding mechanism, a vertical rail mechanism, and a rotating
+extension carousel/dispenser, plus 3D-printed structural parts. See
+[docs/mechanical_design.md](docs/mechanical_design.md) for what's documented from the code, and
+[hardware/mechanical/](hardware/mechanical/) for where CAD/STL files belong (currently empty —
+owner TODO).
+
+---
+
+## Web Application
+
+A Vite + React app (`react-app/`) for registration, login, generating a machine access code, and
+viewing order history (customer + admin views). It talks **only** to the second board's HTTP server
+— never directly to Firebase (`react-app/src/firebase.js` initializes a Firebase SDK client-side
+but is unused; kept for reference).
+
+```
+react-app/
+  ├─ vite.config.js          Vite build config + Vitest test config
+  ├─ src/api.js              talks to the second board's HTTP server (register/login/codes/orders)
+  ├─ src/api.test.js         unit tests for api.js — run with `npm test`
+  ├─ src/firebase.js         unused — kept for reference, nothing imports from it
+  └─ src/pages/              Login/Register/Dashboard/Booking/MyAppointments/Admin
+```
+
+### Firebase data structure (Cloud Firestore)
 
 ```
 users/{uid}   = { name, email, role }
@@ -155,14 +218,40 @@ codes/{code}  = { uid, name, used, createdAt }               // created by the a
 orders/{id}   = { uid, name, extensions, hairColor, status, createdAt }  // written by the machine, read by the app
 ```
 
-The app never talks to Firestore directly — every one of these reads/writes goes through the
-second board's HTTP server ([second_esp32/WebServer.ino](second_esp32/WebServer.ino) +
-[AuthManager.ino](second_esp32/AuthManager.ino) +
-[FirebaseManager.ino](second_esp32/FirebaseManager.ino)).
+---
+
+## Safety
+
+A single physical button on the first board serves as both confirm/all-clear (when idle) and
+emergency stop (during braiding), gated by an `armed` flag. On an emergency: both motors are
+immediately de-energized, the session is saved with status `"emergency"` (code kept valid for a
+retry), and the rail always returns to its home position before the machine resets. Full detail —
+including what's implemented vs. only a future idea (watchdog, timeouts, hardware cutoff):
+[docs/safety.md](docs/safety.md).
 
 ---
 
-## ⚙️ Setup and running it
+## Repository Documentation
+
+| Document | Covers |
+|---|---|
+| [docs/PROJECT_ANALYSIS.md](docs/PROJECT_ANALYSIS.md) | Repo audit — strengths, gaps, recommendations |
+| [docs/project_overview.md](docs/project_overview.md) | Concise, interview-ready project summary |
+| [docs/hardware_architecture.md](docs/hardware_architecture.md) | Block diagram, per-board responsibilities |
+| [docs/state_machines.md](docs/state_machines.md) | Both boards' state machines, as diagrams |
+| [docs/uart_protocol.md](docs/uart_protocol.md) | UART message table + sequence diagram |
+| [docs/mechanical_design.md](docs/mechanical_design.md) | Braiding/rail/carousel mechanisms, 3D-printed parts |
+| [docs/system_flow.md](docs/system_flow.md) | End-to-end user + system flow |
+| [docs/safety.md](docs/safety.md) | Implemented safety behavior vs. future ideas |
+| [docs/demo.md](docs/demo.md) | Demo video shot list |
+| [docs/images/README.md](docs/images/README.md) | Recommended photos (none added yet) |
+| [hardware/BOM.md](hardware/BOM.md) | Bill of materials |
+| [components.md](components.md) | Original narrative bill of materials |
+| [function_map.md](function_map.md) | Every function in the project, what it does |
+
+---
+
+## Setup and running it
 
 ### ESP32 boards (Arduino IDE)
 
@@ -192,12 +281,30 @@ npm run dev
 
 ---
 
-## 📁 File structure
+## Future Improvements
+
+Ideas only — none of these are implemented; see [docs/safety.md](docs/safety.md) and
+[docs/state_machines.md](docs/state_machines.md) for the full lists these are drawn from:
+
+- Drive the rail's segmented-lowering logic during braiding (currently defined in `Config.h` but
+  not wired up — see `second_esp32/Motors.ino`).
+- Watchdog timer, motor/sensor/UART timeouts beyond the existing per-request retries, and a
+  hardware-level emergency cutoff independent of the microcontrollers.
+- A dedicated `FAULT` state distinct from the button-triggered `ST_EMERGENCY`.
+- UART protocol hardening: ACK, retry, checksum/CRC, additional framing.
+- Populate [hardware/mechanical/](hardware/mechanical/) with real STL/STEP files, and
+  [docs/images/](docs/images/) with real photos.
+
+---
+
+## File Structure
 
 ```
 README.md                    this file
 function_map.md               every function in the project, what it does, and the logic flow
 components.md                 bill of materials — every physical part and what it's for
+docs/                          architecture, state machines, UART, mechanical, safety, flow, demo docs
+hardware/                      bill of materials (hardware/BOM.md) + mechanical CAD/STL folders
 
 first_esp32/                 first ESP32 (sensors + extension motor) — one file per component
   ├─ Config.h                pins and constants (no secrets — nothing to configure here)
@@ -210,7 +317,7 @@ first_esp32/                 first ESP32 (sensors + extension motor) — one fil
 second_esp32/                second ESP32 (master) — one file per module
   ├─ Config.h                pins, motor parameters, WiFi/Firebase (via Secrets.h)
   ├─ Secrets.h.example       template for Secrets.h — copy it, fill in your own values (see Setup below)
-  ├─ Secrets.h               your real WiFi/Firebase values — not in git, you create this yourself
+  ├─ Secrets.h                your real WiFi/Firebase values — not in git, you create this yourself
   ├─ second_esp32.ino        the main session state machine (the whole flow)
   ├─ DisplayManager.ino      ← the screens (keypad, extension choice, messages)
   ├─ Motors.ino              rail + braid motors
@@ -222,5 +329,5 @@ react-app/                   React app
   ├─ src/api.js              talks to the second board's HTTP server (register/login/codes/orders)
   ├─ src/api.test.js         unit tests for api.js — run with `npm test`
   ├─ src/firebase.js         unused — kept for reference, nothing imports from it
-  └─ src/pages/              Login/Register/Dashboard/MyAppointments
+  └─ src/pages/              Login/Register/Dashboard/Booking/MyAppointments/Admin
 ```
