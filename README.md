@@ -14,8 +14,6 @@ frontend, cloud backend, and a physical, 3D-printed mechanical build.
 access is by request; if you don't have permission yet, open the link and use Drive's "Request
 access" button.
 
-TODO: INSERT DEMO VIDEO LINK (replace the link above once a public/unrestricted copy is ready)
-
 The video demonstrates the full workflow: machine startup, touchscreen code entry and extension
 selection, the sensor checks (distance + optional hair-color scan), the extension carousel
 dispensing, the braiding mechanism running, and a completed order. See [docs/demo.md](docs/demo.md)
