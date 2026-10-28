@@ -153,7 +153,7 @@ polled every tick, returns 0 (still waiting), 1 (success), or -1 (timed out).
 
 | Function | Responsible for |
 |---|---|
-| `uartSetup()` | initializes Serial2 (UART2, pins 16/17, 115200 baud) |
+| `uartSetup()` | initializes Serial2 (UART2, 115200 baud) |
 | `uartSend(s)` | sends a string + `\n` to the first board |
 | `parseLine(line)` | parses a line received from the first board and updates the matching global (`EMG`, `OK`, `DIST:`, `DISTOK:`, `COLOR:`, `DISPDONE`) |
 | `uartReceiveLines()` | reads whatever has accumulated in Serial2's buffer, assembles complete lines, and passes them to `parseLine()` — called every `loop()` iteration regardless of state, so nothing is ever missed |

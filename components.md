@@ -1,7 +1,7 @@
 # Components (Bill of Materials)
 
-Everything used to build the physical machine. Pin assignments are in [README.md](README.md#-wiring-pin-map);
-this is the parts list behind them.
+Everything used to build the physical machine. See also the concise version at
+[hardware/BOM.md](hardware/BOM.md).
 
 ## Compute
 
@@ -31,7 +31,7 @@ this is the parts list behind them.
 | Component | Notes |
 |---|---|
 | 5V supply for the motors/drivers | 28BYJ-48 + ULN2003 boards are standard 5V; check your specific L298N board's input range (commonly 6–12V, with an onboard 5V regulator) — verify against your board's datasheet before powering it |
-| Shared GND across both boards + all drivers | mandatory — see the UART wiring warning in README |
+| Shared GND across both boards + all drivers | mandatory for reliable UART communication and motor driver operation |
 | Jumper wires / perfboard / enclosure | mechanical build, not pinned down by the code |
 
 ## Not physical hardware, but part of the system
